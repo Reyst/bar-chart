@@ -2,26 +2,17 @@ package com.github.reyst.barchart
 
 import androidx.annotation.FloatRange
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -29,6 +20,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.UiComposable
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -40,6 +32,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -132,7 +125,7 @@ fun BarChart(
     zeroDataIcon: Painter = painterResource(id = android.R.drawable.ic_secure),
     cornerRadius: CornerRadius = CornerRadius(20f, 20f),
     @FloatRange(from = 0.0, to = 1.0) barScale: Float = 1F,
-    onBarClick: (Int, ChartValue<*>) -> Unit = { _, _ -> },
+    markerContent: @Composable @UiComposable (ChartValue<*>) -> Unit = {},
 ) {
 
     var selectedItemIndex by remember(values) { mutableIntStateOf(-1) }
@@ -252,13 +245,52 @@ fun BarChart(
             selectedItemIndex,
             toggleSelection = {
                 selectedItemIndex = if (it == selectedItemIndex) -1 else it
-                if (selectedItemIndex != -1) {
-                    onBarClick(selectedItemIndex, values[selectedItemIndex])
-                }
             },
         )
+
+        if (selectedItemIndex != -1) {
+            Layout(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.75F),
+                content = {
+                    markerContent(values[selectedItemIndex])
+                },
+                measurePolicy = { measurables, constraints ->
+
+                    val placeable = measurables
+                        .first()
+                        .measure(constraints.copy(minWidth = 0, minHeight = 0))
+
+                    layout(constraints.maxWidth, constraints.maxHeight) {
+
+                        val top = insets
+                            .top
+                            .toInt()
+                            .takeIf { it + placeable.height <= constraints.maxHeight }
+                            ?: 0
+
+                        val baseStart =
+                            (insets.left + selectedItemIndex * hItemStep - placeable.width / 2 + hItemStep / 2)
+
+                        val left = baseStart
+                            .toInt()
+                            .let {
+                                if (it + placeable.width > constraints.maxWidth) constraints.maxWidth - placeable.width
+                                else it
+                            }
+                            .takeIf { it > 0 }
+                            ?: 0
+
+                        placeable.placeRelative(left, top)
+                    }
+                }
+            )
+        }
+
     }
 }
+
 
 @Composable
 private fun DrawValueBars(
@@ -423,57 +455,37 @@ value class ValueItem(override val value: Int) : IntChartValue
 @Composable
 fun BarChartPreview() {
 
-    val easing = CubicBezierEasing(0.6F, 0.2F, 0.6F, 1.4F)
-    var target by remember { mutableFloatStateOf(0F) }
+    val easing = remember { CubicBezierEasing(0.6F, 0.2F, 0.6F, 1.4F) }
+    var target by remember { mutableFloatStateOf(1F) }
 
-    val displayAnimation by animateFloatAsState(
-        targetValue = 1F,
+    val displayAnimation = animateFloatAsState(
+        targetValue = target,
         label = "appearing1",
         animationSpec = tween(700, easing = easing),
     )
 
-    SideEffect { target = 1F }
-
-
-/*
-    val displayAnimation = animateFloatAsState(
-        targetValue = 1F,
-        label = "appearing1",
-//        animationSpec = tween(1_000, easing = LinearEasing),
-        animationSpec = spring(
-            stiffness = Spring.StiffnessLow,
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-        ),
-    )
-*/
+    LaunchedEffect(Unit) { target = 1F }
 
     BarChart(
-        /*
-                values = (0..12)
-                    .map {
-                        when(it) {
-                            4 -> ValueItem(-1)
-                            8 -> ValueItem(0)
-                            3 -> ValueItem(6)
-                            6 -> ValueItem(32)
-                            10 -> ValueItem(17)
-                            else -> ValueItem(33 - it * 2)
-                        }
-
-                    },
-                barWidth = 0.60F,
-        */
+        modifier = Modifier
+//            .padding(innerPadding)
+            .fillMaxWidth()
+            .fillMaxHeight(0.5F),
         values = listOf(
             ValueItem(31),
             ValueItem(2),
             ValueItem(13),
             ValueItem(-1),
             ValueItem(7),
+            ValueItem(26),
+            ValueItem(-1),
+            ValueItem(8),
+            ValueItem(5),
+            ValueItem(4),
+            ValueItem(6),
+            ValueItem(17),
         ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(300.dp),
-        yAxisGuideCount = 2,
+        yAxisGuideCount = 1,
         yAxisStepRoundMultiplier = {
             when {
                 it > 5000 -> 1000
@@ -498,13 +510,18 @@ fun BarChartPreview() {
         ),
         xLabelProvider = {
             when (it) {
-//                0 -> "12:00"
+                0 -> "12:00"
                 1 -> "12:15"
-//                2 -> "12:30"
+                2 -> "12:30"
                 3 -> "12:45"
                 else -> ""
             }
         },
-        barScale = displayAnimation,
-    )
+        barScale = displayAnimation.value
+    ) {
+        ChartMarker(
+            data = "Item with value: ${it.value}",
+            modifier = Modifier.wrapContentSize()
+        )
+    }
 }
