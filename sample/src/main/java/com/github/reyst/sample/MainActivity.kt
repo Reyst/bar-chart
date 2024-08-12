@@ -44,88 +44,87 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
 
-    @Composable
-    fun MainScreen(modifier: Modifier = Modifier) {
-        val easing = remember { CubicBezierEasing(0.6F, 0.2F, 0.6F, 1.4F) }
-        var target by remember { mutableFloatStateOf(0F) }
+@Composable
+fun MainScreen(modifier: Modifier = Modifier) {
+    val easing = remember { CubicBezierEasing(0.6F, 0.2F, 0.6F, 1.4F) }
+    var target by remember { mutableFloatStateOf(0F) }
 
-        val displayAnimation = animateFloatAsState(
-            targetValue = target,
-            label = "appearing1",
-            animationSpec = tween(700, easing = easing),
-        )
+    val displayAnimation = animateFloatAsState(
+        targetValue = target,
+        label = "appearing1",
+        animationSpec = tween(700, easing = easing),
+    )
 
-        LaunchedEffect(Unit) { target = 1F }
+    LaunchedEffect(Unit) { target = 1F }
 
-        BarChart(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .fillMaxHeight(0.5F),
-            values = listOf(
-                ValueItem(31),
-                ValueItem(2),
-                ValueItem(13),
-                ValueItem(-1),
-                ValueItem(7),
-                ValueItem(26),
-                ValueItem(-1),
-                ValueItem(8),
-                ValueItem(5),
-                ValueItem(4),
-                ValueItem(6),
-                ValueItem(17),
-            ),
-            yAxisGuideCount = 1,
-            yAxisStepRoundMultiplier = {
-                when {
-                    it > 5000 -> 1000
-                    it > 1000 -> 500
-                    it > 500 -> 100
-                    it > 100 -> 50
-                    it > 50 -> 10
-                    it > 10 -> 5
-                    else -> 1
-                }
-            },
-            xAxisGuideCount = 3,
-            xLabelStyle = TextStyle(
-                Color.DarkGray,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-            ),
-            yLabelStyle = TextStyle(
-                Color.DarkGray,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-            ),
-            xLabelProvider = {
-                when (it) {
-                    0 -> "12:00"
-                    1 -> "12:15"
-                    2 -> "12:30"
-                    3 -> "12:45"
-                    else -> ""
-                }
-            },
-            barScale = displayAnimation.value
-        ) {
-            ChartMarker(
-                data = "Item with\nvalue: ${it.value}",
-                modifier = Modifier.wrapContentSize()
-            )
-        }
-    }
-
-
-    @Preview
-    @Composable
-    fun MainScreenPreview() {
-        BarChartTheme {
-            Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                MainScreen(modifier = Modifier.padding(innerPadding))
+    BarChart(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .fillMaxHeight(0.5F),
+        values = listOf(
+            ValueItem(31),
+            ValueItem(2),
+            ValueItem(13),
+            ValueItem(-1),
+            ValueItem(7),
+            ValueItem(26),
+            ValueItem(-1),
+            ValueItem(8),
+            ValueItem(5),
+            ValueItem(4),
+            ValueItem(6),
+            ValueItem(17),
+        ),
+        yAxisGuideCount = 1,
+        yAxisStepRoundMultiplier = {
+            when {
+                it > 5000 -> 1000
+                it > 1000 -> 500
+                it > 500 -> 100
+                it > 100 -> 50
+                it > 50 -> 10
+                it > 10 -> 5
+                else -> 1
             }
+        },
+        xAxisGuideCount = 3,
+        xLabelStyle = TextStyle(
+            Color.DarkGray,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+        ),
+        yLabelStyle = TextStyle(
+            Color.DarkGray,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+        ),
+        xLabelProvider = {
+            when (it) {
+                0 -> "12:00"
+                1 -> "12:15"
+                2 -> "12:30"
+                3 -> "12:45"
+                else -> ""
+            }
+        },
+        barScale = displayAnimation.value
+    ) {
+        ChartMarker(
+            data = "Item with\nvalue: ${it.value}",
+            modifier = Modifier.wrapContentSize()
+        )
+    }
+}
+
+@Preview
+@Composable
+fun MainScreenPreview() {
+    BarChartTheme {
+        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+            MainScreen(modifier = Modifier.padding(innerPadding))
         }
     }
 }
