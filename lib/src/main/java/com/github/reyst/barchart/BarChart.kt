@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
@@ -70,7 +71,7 @@ private data class GridConfig(
 
 @Stable
 private data class BarConfig(
-    val itemStep: Float,
+    val itemWidth: Float,
     val cornerRadius: CornerRadius,
     val barColor: Color,
     val barWidth: Float,
@@ -80,7 +81,7 @@ private data class BarConfig(
 )
 
 
-private data class ChartInsets(
+data class ChartInsets(
     val left: Float,
     val top: Float,
     val right: Float,
@@ -95,11 +96,8 @@ private data class ChartInsets(
 
 
 fun calculateScaleStep(value: Double, divisions: Int, roundMultiplier: Int = 1): Int {
-
     val maxValue = ceil(value + 0.01)
-
     val step = ceil(maxValue / (divisions - 1)).toInt()
-
     return roundUpTo(step, roundMultiplier)
 }
 
@@ -119,12 +117,14 @@ fun BarChart(
     yAxisStepRoundMultiplier: (maxValue: Int) -> Int = { if (it > 10) 5 else 1 },
     yLabelStyle: TextStyle = TextStyle.Default,
     gridColor: Color = Color.LightGray,
+
     barColor: Color = Color.Blue,
     barSelectionColor: Color = Color.Green.copy(alpha = 0.3F),
     @FloatRange(from = 0.0, to = 1.0) barWidth: Float = 0.6F,
     zeroDataIcon: Painter = painterResource(id = android.R.drawable.ic_secure),
     cornerRadius: CornerRadius = CornerRadius(20f, 20f),
     @FloatRange(from = 0.0, to = 1.0) barScale: Float = 1F,
+
     markerContent: @Composable @UiComposable (ChartValue<*>) -> Unit = {},
 ) {
 
@@ -227,7 +227,7 @@ fun BarChart(
 
         val barsConfig = remember(hItemStep, iconSize, barColor, barSelectionColor, barWidth) {
             BarConfig(
-                itemStep = hItemStep,
+                itemWidth = hItemStep,
                 cornerRadius = cornerRadius,
                 barColor = barColor,
                 barWidth = barWidth,
@@ -314,66 +314,79 @@ private fun DrawValueBars(
                         )
                     ) {
                         val x = tapOffset.x
-                        val index = (ceil(x - insets.left) / config.itemStep).toInt()
+                        val index = (ceil(x - insets.left) / config.itemWidth).toInt()
                         toggleSelection(index)
                     }
                 }
             }
     ) {
 
-        val fHeight = size.height
-
-        val itemStep = config.itemStep
+        val itemStep = config.itemWidth
 
         values.forEachIndexed { index, item ->
 
-            if (index == selectedIndex) {
-                drawRect(
-                    color = config.barSelectionColor,
-                    topLeft = Offset(
-                        insets.left + index * itemStep,
-                        insets.top,
-                    ),
-                    size = Size(
-                        itemStep,
-                        fHeight - insets.vertical,
+            drawBar(index, index == selectedIndex, config, insets, itemStep, item, hMultiplier)
+        }
+    }
+}
+
+private fun DrawScope.drawBar(
+    index: Int,
+    isSelected: Boolean,
+    config: BarConfig,
+    insets: ChartInsets,
+    itemWidth: Float,
+    item: IntChartValue,
+    hMultiplier: Float,
+) {
+
+    val fHeight = size.height
+
+    if (isSelected) {
+        drawRect(
+            color = config.barSelectionColor,
+            topLeft = Offset(
+                insets.left + index * itemWidth,
+                insets.top,
+            ),
+            size = Size(
+                itemWidth,
+                fHeight - insets.vertical,
+            )
+        )
+    }
+
+
+    if (item.isEmpty) {
+
+        val left = insets.left + index * itemWidth + (itemWidth - config.iconSize.width) / 2
+        val top = insets.bottom + config.iconSize.height
+        translate(left = left, fHeight - top) {
+            with(config.zeroDataIcon) {
+                draw(size = config.iconSize)
+            }
+        }
+    } else {
+        val path = Path()
+            .apply {
+                addRoundRect(
+                    RoundRect(
+                        rect = Rect(
+                            offset = Offset(
+                                insets.left + index * itemWidth + ((itemWidth - itemWidth * config.barWidth) / 2),
+                                fHeight - insets.bottom,
+                            ),
+                            size = Size(
+                                itemWidth * config.barWidth,
+                                item.value * hMultiplier
+                            ),
+                        ),
+                        topLeft = config.cornerRadius,
+                        topRight = config.cornerRadius,
                     )
                 )
             }
-
-
-            if (item.isEmpty) {
-
-                val left = insets.left + index * itemStep + (itemStep - config.iconSize.width) / 2
-                val top = insets.bottom + config.iconSize.height
-                translate(left = left, fHeight - top) {
-                    with(config.zeroDataIcon) {
-                        draw(size = config.iconSize)
-                    }
-                }
-            } else {
-                val path = Path()
-                    .apply {
-                        addRoundRect(
-                            RoundRect(
-                                rect = Rect(
-                                    offset = Offset(
-                                        insets.left + index * itemStep + ((itemStep - itemStep * config.barWidth) / 2),
-                                        fHeight - insets.bottom,
-                                    ),
-                                    size = Size(
-                                        itemStep * config.barWidth,
-                                        item.value * hMultiplier
-                                    ),
-                                ),
-                                topLeft = config.cornerRadius,
-                                topRight = config.cornerRadius,
-                            )
-                        )
-                    }
-                drawPath(path, color = config.barColor)
-            }
-        }
+        drawPath(path, color = config.barColor)
     }
 }
 
@@ -456,7 +469,7 @@ value class ValueItem(override val value: Int) : IntChartValue
 fun BarChartPreview() {
 
     val easing = remember { CubicBezierEasing(0.6F, 0.2F, 0.6F, 1.4F) }
-    var target by remember { mutableFloatStateOf(1F) }
+    var target by remember { mutableFloatStateOf(0F) }
 
     val displayAnimation = animateFloatAsState(
         targetValue = target,
@@ -473,15 +486,15 @@ fun BarChartPreview() {
             .fillMaxHeight(0.5F),
         values = listOf(
             ValueItem(31),
-            ValueItem(2),
+//            ValueItem(2),
             ValueItem(13),
             ValueItem(-1),
-            ValueItem(7),
+//            ValueItem(7),
             ValueItem(26),
-            ValueItem(-1),
-            ValueItem(8),
-            ValueItem(5),
-            ValueItem(4),
+//            ValueItem(-1),
+//            ValueItem(8),
+//            ValueItem(5),
+//            ValueItem(4),
             ValueItem(6),
             ValueItem(17),
         ),
@@ -511,9 +524,9 @@ fun BarChartPreview() {
         xLabelProvider = {
             when (it) {
                 0 -> "12:00"
-                1 -> "12:15"
+//                1 -> "12:15"
                 2 -> "12:30"
-                3 -> "12:45"
+//                3 -> "12:45"
                 else -> ""
             }
         },
