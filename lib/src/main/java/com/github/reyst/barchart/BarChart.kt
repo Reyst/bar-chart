@@ -21,17 +21,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.UiComposable
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.painterResource
@@ -44,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.reyst.barchart.specs.FloatingDashBarSpecification
 import kotlin.math.ceil
 import kotlin.math.max
 
@@ -69,18 +63,6 @@ private data class GridConfig(
     val lineThickness: Dp = 1.dp,
 )
 
-@Stable
-private data class BarConfig(
-    val itemWidth: Float,
-    val cornerRadius: CornerRadius,
-    val barColor: Color,
-    val barWidth: Float,
-    val iconSize: Size,
-    val zeroDataIcon: Painter,
-    val barSelectionColor: Color,
-)
-
-
 data class ChartInsets(
     val left: Float,
     val top: Float,
@@ -93,7 +75,6 @@ data class ChartInsets(
     val horizontal: Float
         get() = left + right
 }
-
 
 fun calculateScaleStep(value: Double, divisions: Int, roundMultiplier: Int = 1): Int {
     val maxValue = ceil(value + 0.01)
@@ -108,7 +89,7 @@ fun roundUpTo(number: Int, multiplier: Int): Int {
 
 @Composable
 fun BarChart(
-    values: List<IntChartValue>,
+    values: List<ChartValue<*>>,
     modifier: Modifier = Modifier,
     xAxisGuideCount: Int = 3,
     xLabelStyle: TextStyle = TextStyle.Default,
@@ -118,13 +99,16 @@ fun BarChart(
     yLabelStyle: TextStyle = TextStyle.Default,
     gridColor: Color = Color.LightGray,
 
-    barColor: Color = Color.Blue,
-    barSelectionColor: Color = Color.Green.copy(alpha = 0.3F),
-    @FloatRange(from = 0.0, to = 1.0) barWidth: Float = 0.6F,
-    zeroDataIcon: Painter = painterResource(id = android.R.drawable.ic_secure),
-    cornerRadius: CornerRadius = CornerRadius(20f, 20f),
-    @FloatRange(from = 0.0, to = 1.0) barScale: Float = 1F,
+    barSpecification: BarSpecification = BarSpecification.DEFAULT_BAR_ITEM,
+    /*
+        barColor: Color = Color.Blue,
+        barSelectionColor: Color = Color.Green.copy(alpha = 0.3F),
+        @FloatRange(from = 0.0, to = 1.0) barWidth: Float = 0.6F,
+        zeroDataIcon: Painter = painterResource(id = android.R.drawable.ic_secure),
+        cornerRadius: CornerRadius = CornerRadius(20f, 20f),
+     */
 
+    @FloatRange(from = 0.0, to = 1.0) barScale: Float = 1F,
     markerContent: @Composable @UiComposable (ChartValue<*>) -> Unit = {},
 ) {
 
@@ -139,21 +123,21 @@ fun BarChart(
 
         val maxValue = remember(values) {
             values
-                .fold(0) { result, item ->
+                .fold(0.0) { result, item ->
                     if (item.isEmpty) result
-                    else maxOf(result, item.value)
+                    else maxOf(result, item.value.toDouble())
 
                 }
                 .takeIf { it > 0 }
-                ?: 1
+                ?: 1.0
         }
 
         val horizontalLines = yAxisGuideCount + 2
         val hLineStep = remember(maxValue, horizontalLines) {
             calculateScaleStep(
-                maxValue.toDouble(),
+                maxValue,
                 horizontalLines,
-                yAxisStepRoundMultiplier(maxValue)
+                yAxisStepRoundMultiplier(ceil(maxValue).toInt())
             )
         }
         val topValue = remember(hLineStep) { hLineStep * (horizontalLines - 1) }
@@ -218,29 +202,13 @@ fun BarChart(
             hMultiplier,
         )
 
-
         val hItemStep = (fWidth - insets.horizontal) / values.size
-
-        val iconSize = remember(zeroDataIcon, hItemStep) {
-            zeroDataIcon.intrinsicSize * (barWidth * hItemStep / zeroDataIcon.intrinsicSize.width)
-        }
-
-        val barsConfig = remember(hItemStep, iconSize, barColor, barSelectionColor, barWidth) {
-            BarConfig(
-                itemWidth = hItemStep,
-                cornerRadius = cornerRadius,
-                barColor = barColor,
-                barWidth = barWidth,
-                iconSize = iconSize,
-                zeroDataIcon = zeroDataIcon,
-                barSelectionColor = barSelectionColor,
-            )
-        }
 
         DrawValueBars(
             values,
             insets,
-            barsConfig,
+            barSpecification,
+            hItemStep,
             hMultiplier * barScale,
             selectedItemIndex,
             toggleSelection = {
@@ -287,20 +255,33 @@ fun BarChart(
                 }
             )
         }
-
     }
 }
 
 
 @Composable
 private fun DrawValueBars(
-    values: List<IntChartValue>,
+    values: List<ChartValue<*>>,
     insets: ChartInsets,
-    config: BarConfig,
-    hMultiplier: Float,
+    specification: BarSpecification,
+    xItemWidth: Float,
+    yMultiplier: Float,
     selectedIndex: Int,
     toggleSelection: (Int) -> Unit,
 ) {
+
+    val icon = specification
+        .zeroDataIcon
+        ?.let { painterResource(id = it) }
+
+    val iconSize = remember(icon, specification) {
+        icon
+            ?.let {
+                val baseSize = it.intrinsicSize
+                baseSize * (specification.barWidth * xItemWidth / baseSize.width)
+            }
+    }
+
     Canvas(
         modifier = Modifier
             .fillMaxSize()
@@ -314,22 +295,30 @@ private fun DrawValueBars(
                         )
                     ) {
                         val x = tapOffset.x
-                        val index = (ceil(x - insets.left) / config.itemWidth).toInt()
+                        val index = (ceil(x - insets.left) / xItemWidth).toInt()
                         toggleSelection(index)
                     }
                 }
             }
     ) {
-
-        val itemStep = config.itemWidth
-
         values.forEachIndexed { index, item ->
-
-            drawBar(index, index == selectedIndex, config, insets, itemStep, item, hMultiplier)
+            with(specification) {
+                drawBar(
+                    index,
+                    index == selectedIndex,
+                    item.isEmpty,
+                    xItemWidth,
+                    item.value.toFloat() * yMultiplier,
+                    icon,
+                    iconSize,
+                    insets
+                )
+            }
         }
     }
 }
 
+/*
 private fun DrawScope.drawBar(
     index: Int,
     isSelected: Boolean,
@@ -389,6 +378,7 @@ private fun DrawScope.drawBar(
         drawPath(path, color = config.barColor)
     }
 }
+*/
 
 @Composable
 private fun CoordinateGrid(
@@ -486,14 +476,16 @@ fun BarChartPreview() {
             .fillMaxHeight(0.5F),
         values = listOf(
             ValueItem(31),
-//            ValueItem(2),
+            ValueItem(2),
             ValueItem(13),
             ValueItem(-1),
-//            ValueItem(7),
+            ValueItem(7),
             ValueItem(26),
+            ValueItem(0),
+            ValueItem(1),
 //            ValueItem(-1),
-//            ValueItem(8),
-//            ValueItem(5),
+            ValueItem(8),
+            ValueItem(5),
 //            ValueItem(4),
             ValueItem(6),
             ValueItem(17),
@@ -530,6 +522,7 @@ fun BarChartPreview() {
                 else -> ""
             }
         },
+        barSpecification = FloatingDashBarSpecification(),
         barScale = displayAnimation.value
     ) {
         ChartMarker(
